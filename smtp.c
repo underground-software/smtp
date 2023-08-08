@@ -496,7 +496,7 @@ static void handle_mail(enum state *state)
 		message_id[message_id_size] = '\0';
 		dprintf(CURR_EMAIL_FD,
 			"Received: by kdlp.underground.software ; %s\r\n"
-			"Message-ID: <%.*s@kdlp.underground.software>\r\nFrom: %.*s\r\n",
+			"Message-ID: <%.*s@kdlp.underground.software>\r\nFrom: <%.*s@kdlp.underground.software>\r\n",
 			now(), (int)message_id_size, message_id, (int)username_size, username);
 		*state = MAIL;
 		REPLY("250 OK")
