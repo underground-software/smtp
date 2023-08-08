@@ -621,6 +621,7 @@ static void handle_data(enum state *state)
 	}
 	close(CURR_EMAIL_FD);
 	dprintf(CURR_SESSION_FD, "%s\n", message_id);
+	*state = LOGIN;
 	REPLY("250 OK")
 }
 
