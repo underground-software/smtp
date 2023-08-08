@@ -442,7 +442,7 @@ static void handle_auth(enum state *state)
 		REPLY("500 Parameters too long")
 	if(!case_insensitive_expect(line_size, line_buff, 6, " login"))
 		REPLY("504 Command parameter not supported")
-	SEND("334 VXNlciBOYW1lAA==");
+	SEND("334 VXNlcm5hbWU6");
 	if(!read_line(line_buff, &line_size))
 		REPLY("500 Parameters too long")
 	if(line_size == 1 && line_buff[0] == '*')
@@ -454,7 +454,7 @@ static void handle_auth(enum state *state)
 	memcpy(username, line_buff, username_size);
 	if(!validate_and_case_fold_email_address(username_size, username))
 		REPLY("535 Invalid username")
-	SEND("334 UGFzc3dvcmQA");
+	SEND("334 UGFzc3dvcmQ6");
 	if(!read_line(line_buff, &line_size))
 		REPLY("500 Parameters too long")
 	if(line_size == 1 && line_buff[0] == '*')
