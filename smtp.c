@@ -602,38 +602,116 @@ static void handle_data(enum state *state)
 	if(line_size != 0)
 		REPLY("503 Syntax error")
 	SEND("354 Start input");
-	for(bool headers = true;;)
+	enum data_state
+	{
+		HEADERS,
+		BODY,
+		FINISHED,
+	};
+	enum error
+	{
+		NONE,
+		NOT_ENOUGH_SPACE,
+		USER_SYNTAX_ISSUE,
+	};
+	bool first_line = true;
+	enum error error = NONE;
+	#define ERROR_NES(...) { warnx(__VA_ARGS__); error = NOT_ENOUGH_SPACE; dstate = BODY; break; }
+	#define ERROR_USI(...) { warnx(__VA_ARGS__); error = USER_SYNTAX_ISSUE; dstate = BODY; break; }
+	#define CHECK_WRITE_FAIL(VARNAME) { if(0 > VARNAME) ERROR_NES("not enough space %d", __LINE__) }
+	for(enum data_state dstate = HEADERS; dstate != FINISHED;)
 	{
 		line_size = read_line_chunk(line_buff);
-		if(headers)
+		switch(dstate)
 		{
-			#define X(STR) (line_size >= ((sizeof (STR))-1) && \
-				case_insensitive_expect((sizeof (STR) -1), line_buff, \
-				(sizeof(STR) - 1), STR)) ||
-			if(X("message-id:") X("from:") X("to:") 0)
-				dprintf(CURR_EMAIL_FD, "X-KDLP-Orig-");
-			#undef X
-		}
-		if(line_size > 1 && line_buff[0] == '.' && line_buff[1] != '.')
-		{
-			warnx("missing dot stuffing on line");
-			dprintf(CURR_EMAIL_FD, ".");
-		}
-		if(line_size == 0)
-			headers = false;
-		if(line_size == 1 && line_buff[0] == '.' && headers)
-		{
-			dprintf(CURR_EMAIL_FD, "\r\n");
-			warnx("missing blank line after headers");
-		}
-		dprintf(CURR_EMAIL_FD, "%.*s\r\n", (int)line_size, line_buff);
-		if(line_size == 1 && line_buff[0] == '.')
+		case HEADERS:
+			if(line_size == 0) //blank line -> end of headers
+			{
+				dstate = BODY;
+			}
+			else if(line_buff[0] == '.')
+			{
+				if(line_size == 1)
+				{
+					warnx("end of message before end of headers blank line");
+					error = USER_SYNTAX_ISSUE;
+					dstate = FINISHED;
+					continue;
+				}
+				else if(line_buff[1] != '.')
+					ERROR_USI("missing second dot for dot stuffing")
+			}
+
+			else if(line_buff[0] == ' ') //starts with space -> line folding continuation
+			{
+				if(first_line)
+					ERROR_USI("first header line has a line folding space")
+			}
+			else //something else -> start of a header
+			{
+				char *colon = memchr(line_buff, ':', line_size);
+				if(NULL == colon)
+					ERROR_USI("header without a colon")
+				#define MATCHES_HDR(STR) (line_size >= ((sizeof (STR))-1) && \
+					case_insensitive_expect((sizeof (STR) -1), line_buff, \
+					(sizeof(STR) - 1), STR)) ||
+				if(MATCHES_HDR("message-id:") MATCHES_HDR("from:") MATCHES_HDR("to:") 0) //we provide these headers
+				{
+					int bytes = dprintf(CURR_EMAIL_FD, "X-KDLP-Orig-"); //change the name of the reserved header by prefixing it with X-KDLP-Orig-
+					CHECK_WRITE_FAIL(bytes)
+				}
+				#undef MATCHES_HDR
+				for(size_t i = 0; line_buff + i != colon; ++i)
+					if(line_buff[i] < 33 || 126 < line_buff[i])
+						ERROR_USI("invalid character %d in header name", line_buff[i])
+				if(error != NONE) //break in ERROR macro will only break out of loop
+					break;
+			}
+			first_line = false;
+			{
+				int bytes = dprintf(CURR_EMAIL_FD, "%.*s\r\n", (int)line_size, line_buff);
+				CHECK_WRITE_FAIL(bytes)
+			}
 			break;
-		while(line_size == LINE_LIMIT)
-		{
-			line_size = read_line_chunk(line_buff);
-			dprintf(CURR_EMAIL_FD, "%.*s\r\n", (int)line_size, line_buff);
+		case BODY:
+			if(line_buff[0] == '.')
+			{
+				if(line_size == 1) //end of message
+					dstate = FINISHED;
+				else if(line_buff[1] != '.')
+					ERROR_USI("missing second dot for dot stuffing")
+			}
+			if(error != NONE)
+				break;
+			{
+				int bytes = dprintf(CURR_EMAIL_FD, "%.*s\r\n", (int)line_size, line_buff);
+				if(0 > bytes)
+					ERROR_NES("not enough space %d", __LINE__)
+			}
+			while(line_size == LINE_LIMIT)
+			{
+				line_size = read_line_chunk(line_buff);
+				int bytes = dprintf(CURR_EMAIL_FD, "%.*s\r\n", (int)line_size, line_buff);
+				if(0 > bytes)
+					ERROR_NES("not enough space %d", __LINE__)
+			}
+			break;
+		case FINISHED:
+			__builtin_unreachable();
 		}
+	}
+	#undef ERROR_NES
+	#undef ERROR_USI
+	#undef CHECK_WRITE_FAIL
+	*state = LOGIN;
+	switch(error)
+	{
+	case NONE:
+		break;
+	case NOT_ENOUGH_SPACE:
+		REPLY("452 Not enough space")
+	case USER_SYNTAX_ISSUE:
+		REPLY("554 Syntax error in message contents")
 	}
 	if(0 > fdatasync(CURR_EMAIL_FD))
 	{
@@ -648,7 +726,6 @@ static void handle_data(enum state *state)
 	}
 	close(CURR_EMAIL_FD);
 	dprintf(CURR_SESSION_FD, "%s\n", message_id);
-	*state = LOGIN;
 	REPLY("250 OK")
 }
 
