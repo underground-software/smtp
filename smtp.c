@@ -436,31 +436,58 @@ enum state
 
 static void handle_auth(enum state *state)
 {
+	bool login = true;
 	if(*state != GREET)
 		REPLY("503 Command out of sequence")
 	if(!read_line(line_buff, &line_size))
 		REPLY("500 Parameters too long")
 	if(!case_insensitive_expect(line_size, line_buff, 6, " login"))
+		login = false;
+	if(!login && (line_size < 7 || !case_insensitive_expect(7, line_buff, 7, " plain ")))
 		REPLY("504 Command parameter not supported")
-	SEND("334 VXNlcm5hbWU6");
-	if(!read_line(line_buff, &line_size))
-		REPLY("500 Parameters too long")
-	if(line_size == 1 && line_buff[0] == '*')
-		REPLY("501 Cancelled")
-	if(!base64_decode(line_size, line_buff, &username_size))
-		REPLY("501 Invalid base64")
-	if(username_size > sizeof username)
-		REPLY("535 Username too long")
-	memcpy(username, line_buff, username_size);
-	if(!validate_and_case_fold_email_address(username_size, username))
-		REPLY("535 Invalid username")
-	SEND("334 UGFzc3dvcmQ6");
-	if(!read_line(line_buff, &line_size))
-		REPLY("500 Parameters too long")
-	if(line_size == 1 && line_buff[0] == '*')
-		REPLY("501 Cancelled")
-	if(!base64_decode(line_size, line_buff, &line_size))
-		REPLY("501 Invalid base64")
+	if(login)
+	{
+		SEND("334 VXNlcm5hbWU6");
+		if(!read_line(line_buff, &line_size))
+			REPLY("500 Parameters too long")
+		if(line_size == 1 && line_buff[0] == '*')
+			REPLY("501 Cancelled")
+		if(!base64_decode(line_size, line_buff, &username_size))
+			REPLY("501 Invalid base64")
+		if(username_size > sizeof username)
+			REPLY("535 Username too long")
+		memcpy(username, line_buff, username_size);
+		if(!validate_and_case_fold_email_address(username_size, username))
+			REPLY("535 Invalid username")
+		SEND("334 UGFzc3dvcmQ6");
+		if(!read_line(line_buff, &line_size))
+			REPLY("500 Parameters too long")
+		if(line_size == 1 && line_buff[0] == '*')
+			REPLY("501 Cancelled")
+		if(!base64_decode(line_size, line_buff, &line_size))
+			REPLY("501 Invalid base64")
+	}
+	else
+	{
+		memmove(line_buff, line_buff + 7, line_size - 7);
+		line_size -= 7;
+		if(!base64_decode(line_size, line_buff, &line_size))
+			REPLY("501 Invalid base64")
+		if(line_size == 0 || line_buff[0] != '\0')
+			REPLY("535 Authentication credentials invalid")
+		char *user_start = line_buff + 1;
+		char *user_end = memchr(user_start, '\0', line_size - 1);
+		if(user_end == NULL)
+			REPLY("535 Authentication credentials invalid")
+		username_size = (size_t)(user_end - user_start);
+		memcpy(username, user_start, username_size);
+		if(!validate_and_case_fold_email_address(username_size, username))
+			REPLY("535 Invalid username")
+		char *pass_start = user_end + 1;
+		char *pass_end = line_buff + line_size;
+		line_size = (size_t)(pass_end - pass_start);
+		memmove(line_buff, pass_start, line_size);
+	}
 	if(!check_credentials(username_size, username, line_size, line_buff))
 		REPLY("535 Authentication credentials invalid")
 	*state = LOGIN;
@@ -682,7 +709,7 @@ int main(int argc, char **argv)
 				close_log_session();
 			open_log_session();
 			state = GREET;
-			REPLY("250-KDLP hello\r\n250 AUTH LOGIN")
+			REPLY("250-KDLP hello\r\n250 AUTH LOGIN PLAIN")
 		case 'rset':
 			eat_rest();
 			if(state >= LOGIN)
