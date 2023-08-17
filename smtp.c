@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/xattr.h>
 #include <time.h>
 #include <uchar.h>
 #include <unistd.h>
@@ -601,6 +602,12 @@ static void handle_data(enum state *state)
 		REPLY("503 Command out of sequence")
 	if(line_size != 0)
 		REPLY("503 Syntax error")
+	off_t curr_size = lseek(CURR_EMAIL_FD, 0, SEEK_CUR);
+	if(0 > curr_size)
+	{
+		warn("unable to get position in email fd");
+		REPLY("451 Error in processing")
+	}
 	SEND("354 Start input");
 	enum data_state
 	{
@@ -613,14 +620,20 @@ static void handle_data(enum state *state)
 		NONE,
 		NOT_ENOUGH_SPACE,
 		USER_SYNTAX_ISSUE,
+		INTERNAL_SERVER_ERROR,
 	};
 	bool first_line = true;
 	enum error error = NONE;
-	#define ERROR_NES(...) { warnx(__VA_ARGS__); error = NOT_ENOUGH_SPACE; dstate = BODY; break; }
-	#define ERROR_USI(...) { warnx(__VA_ARGS__); error = USER_SYNTAX_ISSUE; dstate = BODY; break; }
-	#define CHECK_WRITE_FAIL(VARNAME) { if(0 > VARNAME) ERROR_NES("not enough space %d", __LINE__) }
-	for(enum data_state dstate = HEADERS; dstate != FINISHED;)
+	#define ERROR_NES(...) { warnx(__VA_ARGS__); error = NOT_ENOUGH_SPACE; last_state = dstate = BODY; break; }
+	#define ERROR_USI(...) { warnx(__VA_ARGS__); error = USER_SYNTAX_ISSUE; last_state = dstate = BODY; break; }
+	#define ERROR_ISE(...) { warnx(__VA_ARGS__); error = INTERNAL_SERVER_ERROR; last_state = dstate = BODY; break; }
+	#define CHECK_WRITE_FAIL(VARNAME) { if(0 > VARNAME) ERROR_NES("not enough space %d", __LINE__) else curr_size += (off_t)VARNAME; }
+	for(enum data_state dstate = HEADERS, last_state = HEADERS; dstate != FINISHED;)
 	{
+		if(dstate == BODY && last_state == HEADERS)
+			if(0 > fsetxattr(CURR_EMAIL_FD, "user.top_limit", &curr_size, sizeof curr_size, 0))
+				ERROR_ISE("unable to set xattr on message")
+		last_state = dstate;
 		line_size = read_line_chunk(line_buff);
 		switch(dstate)
 		{
@@ -702,6 +715,7 @@ static void handle_data(enum state *state)
 	}
 	#undef ERROR_NES
 	#undef ERROR_USI
+	#undef ERROR_ISE
 	#undef CHECK_WRITE_FAIL
 	*state = LOGIN;
 	switch(error)
@@ -712,6 +726,8 @@ static void handle_data(enum state *state)
 		REPLY("452 Not enough space")
 	case USER_SYNTAX_ISSUE:
 		REPLY("554 Syntax error in message contents")
+	case INTERNAL_SERVER_ERROR:
+		REPLY("451 Local error in processing")
 	}
 	if(0 > fdatasync(CURR_EMAIL_FD))
 	{
