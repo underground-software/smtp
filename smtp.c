@@ -437,10 +437,10 @@ enum state
 static void handle_auth(enum state *state)
 {
 	bool login = true;
-	if(*state != GREET)
-		REPLY("503 Command out of sequence")
 	if(!read_line(line_buff, &line_size))
 		REPLY("500 Parameters too long")
+	if(*state != GREET)
+		REPLY("503 Command out of sequence")
 	if(!case_insensitive_expect(line_size, line_buff, 6, " login"))
 		login = false;
 	if(!login && (line_size < 7 || !case_insensitive_expect(7, line_buff, 7, " plain ")))
@@ -497,6 +497,8 @@ static void handle_auth(enum state *state)
 
 static void handle_mail(enum state *state)
 {
+	if(!read_line(line_buff, &line_size))
+		REPLY("500 Parameters too long")
 	switch(*state)
 	{
 	case LOGIN:
@@ -505,8 +507,6 @@ static void handle_mail(enum state *state)
 		//this should be impossible
 		if(from_address_size >= sizeof from_address)
 			bail("not enough space for from address");
-		if(!read_line(line_buff, &line_size))
-			REPLY("500 Parameters too long")
 		if(!case_insensitive_expect(line_size, line_buff, from_address_size, from_address))
 			REPLY("550 Not authorized to send mail as that user")
 		{
@@ -539,12 +539,12 @@ static void handle_mail(enum state *state)
 
 static void handle_rcpt(enum state *state)
 {
+	if(!read_line(line_buff, &line_size))
+		REPLY("500 Parameters too long")
 	switch(*state)
 	{
 	case MAIL:
 	case RCPT:
-		if(!read_line(line_buff, &line_size))
-			REPLY("500 Parameters too long")
 		if(line_size < 5 || !case_insensitive_expect(5, line_buff, 5, " to:<"))
 			REPLY("553 Invalid mailbox")
 		{
@@ -595,10 +595,10 @@ static void handle_rcpt(enum state *state)
 
 static void handle_data(enum state *state)
 {
-	if(*state != RCPT)
-		REPLY("503 Command out of sequence")
 	if(!read_line(line_buff, &line_size))
 		REPLY("500 Parameters too long")
+	if(*state != RCPT)
+		REPLY("503 Command out of sequence")
 	if(line_size != 0)
 		REPLY("503 Syntax error")
 	SEND("354 Start input");
