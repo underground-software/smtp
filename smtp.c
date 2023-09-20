@@ -491,7 +491,7 @@ static void handle_auth(enum state *state)
 	if(!check_credentials(username_size, username, line_size, line_buff))
 		REPLY("535 Authentication credentials invalid")
 	*state = LOGIN;
-	dprintf(CURR_SESSION_FD, "Session for %.*s opened at %s\n", (int)username_size, username, now());
+	dprintf(CURR_SESSION_FD, "%ld %.*s\n", time(NULL), (int)username_size, username);
 	REPLY("235 Authentication successful")
 }
 
