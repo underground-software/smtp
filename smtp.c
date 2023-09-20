@@ -14,6 +14,11 @@
 #include <uchar.h>
 #include <unistd.h>
 
+#ifndef HOSTNAME
+#error "you must #define HOSTNAME"
+#define HOSTNAME
+#endif
+
 #define UPPERCASE_LETTERS(MACRO) \
 	MACRO('A') \
 	MACRO('B') \
@@ -510,7 +515,7 @@ static void handle_mail(enum state *state)
 	{
 	case LOGIN:
 		from_address_size = (size_t)snprintf(from_address, sizeof from_address,
-			" from:<%.*s@kdlp.underground.software>", (int)username_size, username);
+			" from:<%.*s@" HOSTNAME ">", (int)username_size, username);
 		//this should be impossible
 		if(from_address_size >= sizeof from_address)
 			bail("not enough space for from address");
@@ -529,8 +534,8 @@ static void handle_mail(enum state *state)
 		message_id_size = unique_string(sizeof message_id, message_id);
 		message_id[message_id_size] = '\0';
 		dprintf(CURR_EMAIL_FD,
-			"Received: by kdlp.underground.software ; %s\r\n"
-			"Message-ID: <%.*s@kdlp.underground.software>\r\nFrom: <%.*s@kdlp.underground.software>\r\n",
+			"Received: by " HOSTNAME " ; %s\r\n"
+			"Message-ID: <%.*s@" HOSTNAME ">\r\nFrom: <%.*s@" HOSTNAME ">\r\n",
 			now(), (int)message_id_size, message_id, (int)username_size, username);
 		*state = MAIL;
 		REPLY("250 OK")
@@ -560,9 +565,11 @@ static void handle_rcpt(enum state *state)
 			char *user_end = memchr(user_start, '@', SIZE_LEFT(user_start));
 			if(!user_end)
 				REPLY("501 Invalid argument")
+		#define X(s) (sizeof(s) - 1), s
 			if(!case_insensitive_expect(SIZE_LEFT(user_end), user_end,
-				27, "@kdlp.underground.software>"))
+				X("@" HOSTNAME ">")))
 				REPLY("550 Only local users allowed")
+		#undef X
 			if((size_t)(user_end - user_start) >= sizeof recipient)
 				REPLY("550 Username too long")
 			recipient_size = (size_t)(user_end - user_start);
@@ -574,7 +581,7 @@ static void handle_rcpt(enum state *state)
 			REPLY("550 Invalid username")
 		if(*state < RCPT) //first recipient (only ever one iteration)
 		{
-			dprintf(CURR_EMAIL_FD, "To: <%.*s@kdlp.underground.software>\r\n", (int)recipient_size, recipient);
+			dprintf(CURR_EMAIL_FD, "To: <%.*s@" HOSTNAME ">\r\n", (int)recipient_size, recipient);
 			*state = RCPT;
 			int assignment_log_fd = openat(base_dir_fd, recipient,
 				O_CLOEXEC | O_DIRECTORY | O_PATH);
@@ -590,7 +597,7 @@ static void handle_rcpt(enum state *state)
 				warn("Unable to chown email to assignment group");
 			REPLY("250 OK")
 		}
-		dprintf(CURR_EMAIL_FD, " , <%.*s@kdlp.underground.software>\r\n", (int)recipient_size, recipient);
+		dprintf(CURR_EMAIL_FD, " , <%.*s@" HOSTNAME ">\r\n", (int)recipient_size, recipient);
 		REPLY("250 OK")
 	case START:
 	case GREET:
