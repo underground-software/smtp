@@ -339,7 +339,7 @@ static bool validate_and_case_fold_email_address(size_t size, char *buff)
 	for(size_t i = 0; i < size; ++i)
 	{
 		char c = buff[i];
-		if('A' <= c && c <= 'A')
+		if('A' <= c && c <= 'Z')
 		{
 			//case fold to lowercase equivalent
 			c |= 0x20;
