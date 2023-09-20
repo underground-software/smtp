@@ -405,8 +405,7 @@ static void close_log_session(void)
 	char filename[256];
 	if((-(size_t)1) == unique_string(sizeof filename, filename))
 		errx(1, "Unable to generate unique filename");
-	if(0 > linkat(AT_FDCWD, "/proc/self/fd/" STRINGIZE(CURR_SESSION_FD),
-		CURR_SESSION_DIR_FD, filename, AT_SYMLINK_FOLLOW))
+	if(0 > linkat(CURR_SESSION_FD, "", CURR_SESSION_DIR_FD, filename, AT_EMPTY_PATH))
 		warn("Unable to link existing session into filesystem");
 	close(CURR_SESSION_FD);
 }
@@ -734,8 +733,7 @@ static void handle_data(enum state *state)
 		warn("Unable to sync email file to disk");
 		REPLY("451 Error storing message")
 	}
-	if(0 > linkat(AT_FDCWD, "/proc/self/fd/" STRINGIZE(CURR_EMAIL_FD),
-		mail_dir_fd, message_id, AT_SYMLINK_FOLLOW))
+	if(0 > linkat(CURR_EMAIL_FD, "", mail_dir_fd, message_id, AT_EMPTY_PATH))
 	{
 		warn("Unable to link existing session into filesystem");
 		REPLY("451 Error storing message")
