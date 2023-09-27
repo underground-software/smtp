@@ -429,9 +429,12 @@ static void open_log_session(void)
 	int fd = openat(base_dir_fd, ".", O_TMPFILE | O_RDWR, 0640);
 	if(0 > fd)
 		warn("Unable allocate descriptor to store log");
-	if(0 > dup3(fd, CURR_SESSION_FD, O_CLOEXEC))
-		warn("Unable dup descriptor for log into CURR_SESSION_FD");
-	close(fd);
+	if(CURR_SESSION_FD != fd)
+	{
+		if(0 > dup3(fd, CURR_SESSION_FD, O_CLOEXEC))
+			warn("Unable dup descriptor for log into CURR_SESSION_FD");
+		close(fd);
+	}
 }
 
 enum state
@@ -525,11 +528,14 @@ static void handle_mail(enum state *state)
 			int fd = openat(base_dir_fd, ".", O_TMPFILE | O_RDWR, 0640);
 			if(0 > fd)
 				REPLY("451 Unable allocate descriptor to store message")
-			int ret = dup3(fd, CURR_EMAIL_FD, O_CLOEXEC);
-			if(ret >= 0 || errno != EINVAL)
+			//if the fd number we got happens to already be CURR_EMAIL_FD, we don't need to do anything
+			if(fd != CURR_EMAIL_FD)
+			{
+				int ret = dup3(fd, CURR_EMAIL_FD, O_CLOEXEC);
 				close(fd);
-			if(ret < 0)
-				REPLY("451 Unable allocate descriptor to store message")
+				if(0 > ret)
+					REPLY("451 Unable allocate descriptor to store message")
+			}
 		}
 		message_id_size = unique_string(sizeof message_id, message_id);
 		message_id[message_id_size] = '\0';
