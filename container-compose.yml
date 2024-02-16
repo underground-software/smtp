@@ -1,0 +1,11 @@
+services:
+  smtp:
+    build:
+      dockerfile: Containerfile
+      target: smtp
+      args:
+        hostname: localhost
+    volumes:
+      - ./email:/mnt/email_data:Z
+    ports:
+      - 465:465
