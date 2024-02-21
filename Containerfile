@@ -1,8 +1,6 @@
-FROM fedora:latest AS build
-RUN dnf -y update
-RUN dnf -y install \
-	musl-clang \
-	musl-libc-static \
+FROM alpine:3.19 AS build
+RUN apk add \
+	clang \
 	make \
 	;
 
@@ -11,7 +9,7 @@ ADD . /smtp
 ARG hostname
 RUN test -n "$hostname" || (echo 'hostname is not set' && false)
 
-RUN make -C /smtp CC='musl-clang -static' SRVNAME=$hostname
+RUN make -C /smtp CC='clang -static' SRVNAME=$hostname
 
 RUN mkdir -p /mnt/email_data/mail /mnt/email_data/logs
 
